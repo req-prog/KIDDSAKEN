@@ -187,6 +187,7 @@
 .mpbtn.gr{background:var(--btn-bg)}
 #mp textarea{width:100%;height:84px;resize:none;border-radius:10px;border:2px solid var(--btn-border);background:rgba(0,0,0,.5);color:#fff;font-size:12px;padding:8px;user-select:text;-webkit-user-select:text;touch-action:auto}
 #mpa{display:none;flex-direction:column;gap:8px}
+#mp input{width:100%;border-radius:10px;border:2px solid var(--btn-border);background:rgba(0,0,0,.5);color:#fff;font-size:15px;padding:10px;user-select:text;-webkit-user-select:text;touch-action:auto}
 #mpst{font-size:13px;color:#ffd23f;min-height:18px}
 .mpl{font-size:13px;font-weight:700}
 </style>
@@ -204,8 +205,11 @@
 <div id="mp"><div class="mpc">
   <div class="mph">МУЛЬТИПЛЕЕР · 2 ИГРОКА</div>
   <div class="mpt">Сервер не нужен. Оба игрока в одной Wi-Fi сети, через один VPN или просто через интернет обмениваются двумя кодами (в мессенджере). Один игрок — убийца, другой — выживший: выберите разные команды в магазине.</div>
+  <button class="mpbtn gr" id="mpmic" type="button">🔓 Шаг 0 (если по VPN не соединяется): разрешить микрофон, чтобы открыть реальные IP</button>
   <div class="mpr"><button class="mpbtn" id="mph" type="button">Создать комнату</button><button class="mpbtn" id="mpj" type="button">Войти по коду</button></div>
   <div id="mpa">
+    <div class="mpl">Твой IP в VPN (смотри в приложении VPN, напр. 10.8.0.2 или 26.x.x.x). Вводи, если вы по VPN:</div>
+    <input id="mpip" type="text" inputmode="decimal" placeholder="например 10.8.0.2">
     <div class="mpl" id="mpl1"></div>
     <textarea id="mpout" readonly></textarea>
     <button class="mpbtn gr" id="mpcp" type="button">Копировать код</button>
@@ -869,8 +873,11 @@ function mpClose(){
 function mkPc(){
   mpClose();
   var pc=new RTCPeerConnection(STUNS);net.pc=pc;
-  pc.onconnectionstatechange=function(){
-    if(pc.connectionState==='failed')mpStatus('Не удалось соединиться. Оба должны быть в одной сети/VPN или иметь доступ в интернет. Попробуйте заново.');
+  pc.oniceconnectionstatechange=function(){
+    var st=pc.iceConnectionState;
+    if(st==='checking')mpStatus('Проверяем связь…');
+    else if(st==='failed')mpStatus('Не соединилось. Оба впишите свой IP из VPN в поле выше, создайте коды ЗАНОВО и обменяйтесь снова. '+(pc.localDescription?candInfo(pc.localDescription.sdp):''));
+    else if(st==='disconnected')mpStatus('Связь пропала…');
   };
   return pc;
 }
@@ -880,6 +887,39 @@ function wireDc(dc){
   dc.onmessage=function(e){try{onNet(JSON.parse(e.data));}catch(err){}};
   dc.onclose=onNetClose;
 }
+var mpIp=$('mpip');
+function fixSdp(sdp,ip){
+  var out=[];
+  sdp.split(/\r?\n/).forEach(function(l){
+    out.push(l);
+    if(l.indexOf('a=candidate:')===0&&/ typ host/.test(l)&&/ udp /i.test(l)){
+      var p=l.split(' ');
+      if(p.length>8&&p[4]!==ip){p[0]='a=candidate:9'+p[0].slice(12);p[3]=String(Math.max(1,(+p[3])-1));p[4]=ip;out.push(p.join(' '));}
+    }
+  });
+  return out.join('\r\n');
+}
+function candInfo(sdp){
+  var h=0,loc=0,sr=0,rl=0;
+  sdp.split(/\r?\n/).forEach(function(l){
+    if(l.indexOf('a=candidate:')!==0)return;
+    if(/ typ host/.test(l)){h++;if(/\.local /.test(l))loc++;}else if(/ typ srflx/.test(l))sr++;else if(/ typ relay/.test(l))rl++;
+  });
+  return 'Кандидаты: host '+h+(loc?' (из них скрыто .local: '+loc+')':'')+', внешний '+sr+(rl?', relay '+rl:'');
+}
+function showCode(msg){
+  var pc=net.pc;if(!pc||!pc.localDescription)return;
+  var d=pc.localDescription,sdp=d.sdp,ip=mpIp.value.trim();
+  if(ip)sdp=fixSdp(sdp,ip);
+  mpOut.value=btoa(JSON.stringify({type:d.type,sdp:sdp}));
+  mpStatus((msg||'')+' '+candInfo(sdp));
+}
+mpIp.addEventListener('input',function(){showCode('Код обновлён с твоим IP.');});
+$('mpmic').addEventListener('click',function(){
+  try{
+    navigator.mediaDevices.getUserMedia({audio:true}).then(function(st){st.getTracks().forEach(function(t){t.stop();});mpStatus('Готово: теперь создавай комнату / входи по коду — реальные IP откроются.');}).catch(function(e){mpStatus('Микрофон не разрешён ('+e.name+'). Используй ввод IP из VPN ниже.');});
+  }catch(e){mpStatus('Браузер не даёт доступ (нужен https). Используй ввод IP из VPN.');}
+});
 function mpErr(e){mpStatus('Ошибка: '+(e&&e.message?e.message:e));}
 function mpShow(host){
   mpMode=host?'host':'join';$('mpa').style.display='flex';mpOut.value='';mpIn.value='';
@@ -904,7 +944,7 @@ $('mph').addEventListener('click',function(){
   try{
     var pc=mkPc();wireDc(pc.createDataChannel('ks'));
     pc.createOffer().then(function(o){return pc.setLocalDescription(o);}).then(function(){return gatherDone(pc);})
-      .then(function(){mpOut.value=enc(pc.localDescription);mpStatus('Код готов. Отправь его другу, потом вставь его ответ ниже.');}).catch(mpErr);
+      .then(function(){showCode('Код готов. Отправь его другу, потом вставь его ответ ниже.');}).catch(mpErr);
   }catch(e){mpErr(e);}
 });
 $('mpj').addEventListener('click',function(){
@@ -924,7 +964,7 @@ $('mpgo').addEventListener('click',function(){
   }else{
     mpStatus('Создаём ответ…');
     pc.setRemoteDescription(d).then(function(){return pc.createAnswer();}).then(function(a){return pc.setLocalDescription(a);}).then(function(){return gatherDone(pc);})
-      .then(function(){mpOut.value=enc(pc.localDescription);mpStatus('Отправь этот ответ хосту — игра запустится сама.');}).catch(mpErr);
+      .then(function(){showCode('Отправь этот ответ хосту — игра запустится сама.');}).catch(mpErr);
   }
 });
 
