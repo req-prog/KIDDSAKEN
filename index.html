@@ -360,14 +360,34 @@ function toView(p){
   var x1=dx*cyw-dz*syw,z1=-dx*syw-dz*cyw;
   return [x1,dy*cp-z1*sp,dy*sp+z1*cp];
 }
-function clipView(vs){
-  var v=vs.map(toView),o=[],N=.15;
-  for(var i=0;i<v.length;i++){
-    var a=v[i],b=v[(i+1)%v.length],ai=a[2]>=N,bi=b[2]>=N;
+/* обрезка полигона плоскостью: A*x+B*y+C*z+D >= 0 остаётся */
+function clipPlane(v,A,B,C,D){
+  var o=[],n=v.length;
+  for(var i=0;i<n;i++){
+    var a=v[i],b=v[(i+1)%n],da=A*a[0]+B*a[1]+C*a[2]+D,db=A*b[0]+B*b[1]+C*b[2]+D,ai=da>=0,bi=db>=0;
     if(ai)o.push(a);
-    if(ai!==bi){var t=(N-a[2])/(b[2]-a[2]);o.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,N]);}
+    if(ai!==bi){var t=da/(da-db);o.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]);}
   }
-  return o.map(function(p){return [W/2+p[0]/p[2]*F,H/2-p[1]/p[2]*F];});
+  return o;
+}
+function clipView(vs){
+  var N=.2,v=vs.map(toView),i,big=false,LIM=Math.max(W,H)*2.5;
+  v=clipPlane(v,0,0,1,-N);                       /* ближняя плоскость */
+  if(v.length<3)return [];
+  /* если полигон слишком раздуло (грань у самой камеры) — режем по краям экрана с запасом,
+     иначе огромные координаты ломают заливку и текстуры «уезжают» на всю карту */
+  for(i=0;i<v.length;i++){
+    var z=v[i][2];
+    if(Math.abs(v[i][0]/z*F)>LIM||Math.abs(v[i][1]/z*F)>LIM){big=true;break;}
+  }
+  if(big){
+    var mx=(W/2+80)/F,my=(H/2+80)/F;
+    v=clipPlane(v,1,0,mx,0);   if(v.length<3)return [];
+    v=clipPlane(v,-1,0,mx,0);  if(v.length<3)return [];
+    v=clipPlane(v,0,1,my,0);   if(v.length<3)return [];
+    v=clipPlane(v,0,-1,my,0);  if(v.length<3)return [];
+  }
+  return v.map(function(p){var z=Math.max(p[2],N);return [W/2+p[0]/z*F,H/2-p[1]/z*F];});
 }
 function col(c,sh,d){
   var f=Math.max(0,Math.min(1,(d-fog[3])/fog[4])),r=(c>>16)&255,g=(c>>8)&255,b=c&255;
