@@ -194,6 +194,10 @@
 #mp input{width:100%;border-radius:10px;border:2px solid var(--btn-border);background:rgba(0,0,0,.5);color:#fff;font-size:15px;padding:10px;user-select:text;-webkit-user-select:text;touch-action:auto}
 #mpst{font-size:13px;color:#ffd23f;min-height:18px}
 .mpl{font-size:13px;font-weight:700}
+#mpbig{display:none;text-align:center;font-weight:900;font-size:48px;letter-spacing:.2em;color:var(--accent);padding:10px;border:2px dashed var(--btn-border);border-radius:12px;user-select:text;-webkit-user-select:text}
+#mpjoin{display:none;gap:8px}
+#mpjoin input{text-transform:uppercase;letter-spacing:.3em;text-align:center;font-size:22px}
+#mpjoin .mpbtn{flex:0 0 auto}
 
 /* пароль и админ-панель */
 #keyb,#admb{display:none;top:calc(84px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));cursor:pointer;padding:10px 16px;font-size:15px}
@@ -232,18 +236,11 @@
 <div id="flash"></div>
 <div id="mp"><div class="mpc">
   <div class="mph">МУЛЬТИПЛЕЕР · 2 ИГРОКА</div>
-  <div class="mpt">Сервер не нужен. Оба игрока в одной Wi-Fi сети, через один VPN или просто через интернет обмениваются двумя кодами (в мессенджере). Один игрок — убийца, другой — выживший: выберите разные команды в магазине.</div>
-  <button class="mpbtn gr" id="mpmic" type="button">🔓 Шаг 0 (если по VPN не соединяется): разрешить микрофон, чтобы открыть реальные IP</button>
+  <div class="mpt">Онлайн через интернет, без VPN и обмена кодами. Один создаёт комнату и говорит другу 5-значный код, второй вводит его. Один — убийца, другой — выживший: выберите разные команды в магазине.</div>
   <div class="mpr"><button class="mpbtn" id="mph" type="button">Создать комнату</button><button class="mpbtn" id="mpj" type="button">Войти по коду</button></div>
   <div id="mpa">
-    <div class="mpl">Твой IP в VPN (смотри в приложении VPN, напр. 10.8.0.2 или 26.x.x.x). Вводи, если вы по VPN:</div>
-    <input id="mpip" type="text" inputmode="decimal" placeholder="например 10.8.0.2">
-    <div class="mpl" id="mpl1"></div>
-    <textarea id="mpout" readonly></textarea>
-    <button class="mpbtn gr" id="mpcp" type="button">Копировать код</button>
-    <div class="mpl" id="mpl2"></div>
-    <textarea id="mpin"></textarea>
-    <button class="mpbtn" id="mpgo" type="button">Дальше</button>
+    <div id="mpbig"></div>
+    <div id="mpjoin"><input id="mpcode" type="text" maxlength="5" autocapitalize="characters" autocomplete="off" placeholder="КОД"><button class="mpbtn" id="mpgo" type="button">Войти</button></div>
   </div>
   <div id="mpst"></div>
   <button class="mpbtn gr" id="mpx" type="button">← Назад</button>
@@ -311,6 +308,7 @@
   <div id="ltxt">Загрузка…</div>
 </div>
 <button id="fs" type="button" aria-label="Полноэкранный режим"></button>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
 var $=function(i){return document.getElementById(i)};
@@ -676,9 +674,8 @@ function addChar0(list,x,z,rot,o,sw,wave,by,fl,ex){
     part(.07,.85,.04,0,3.35,0,0,RD,null,-.3);
     part(.14,.12,.14,0,4.3,.05,hT*.5,BK2);
     /* голова: наклонена вперёд, красный визор, светящиеся глаза, пасть, гребень */
-    part(.34,.5,.34,0,4.3,.5,hT,BK);part(.2,.14,.35,0,4.3,.62,hT,RD);
-    [-.1,.1].forEach(function(xx){part(.05,.05,.36,xx,4.3,.64,hT,0xffd8d8);});
-    part(.18,.025,.345,0,4.3,.3,hT,RD2);part(.35,.04,.35,0,4.3,1.0,hT,RD2);
+    part(.34,.5,.34,0,4.3,.5,hT,BK);
+    part(.35,.04,.35,0,4.3,1.0,hT,RD2);
     /* плечи с шипами */
     part(.28,.18,.26,.85,4.2,0,0,RD);part(.28,.18,.26,-.85,4.2,0,0,RD);
     [-.95,.95].forEach(function(xx){part(.07,.28,.07,xx,4.2,.32,0,BK2);});
@@ -1593,9 +1590,9 @@ $('back').addEventListener('click',function(){
 
 /* ---------- мультиплеер (WebRTC, без сервера) ---------- */
 var MP_KILLS=3,MP_TIME=300,MP_RESPAWN=8,SPAWNS=[[-10,20],[12,10],[-24,-6],[24,-10],[0,-18]];
-var net={on:false,pc:null,dc:null},mpMode='',mpOut=$('mpout'),mpIn=$('mpin'),mpSt=$('mpst');
+var net={on:false,pc:null,dc:null,relay:false},mpMode='',mpSt=$('mpst');
 var STUNS={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
-function send(o){try{if(net.dc&&net.dc.readyState==='open')net.dc.send(JSON.stringify(o));}catch(e){}}
+function send(o){try{if(net.dc&&net.dc.readyState==='open')net.dc.send(JSON.stringify(o));else if(net.relay)sbSend('g',o);}catch(e){}}
 function mpMsg(t,d){mpMsgTxt=t;mpMsgT=d;}
 function mpStatus(t){mpSt.textContent=t;}
 function r1(v){return Math.round(v*10)/10;}
@@ -1613,102 +1610,119 @@ function mpClose(){
   try{if(net.pc)net.pc.close();}catch(e){}
   net.dc=null;net.pc=null;
 }
+/* ---------- Supabase: комнаты по коду (сигналинг) + запасной релей ---------- */
+var SB_URL='https://qxguizijvutacxvfkovc.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4Z3VpemlqdnV0YWN4dmZrb3ZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMyMjkzNzIsImV4cCI6MjEwODgwNTM3Mn0.u7SUyx_HnmZYxItnz_ByBA7FP8jDqNvy20jrQnwsgMw';  /* <-- ВСТАВЬ: Project URL и anon/publishable key из Supabase (Project Settings -> API) */
+var sb=null,sbCh=null,sbHost=false,sbBusy=false,sbTimer=0,sbKA=0,sbHello=0,sbLastRx=0;
+function sbClient(){
+  if(sb)return sb;
+  if(!SB_URL||!SB_KEY){mpStatus('Не заданы SB_URL и SB_KEY (в index.html, поиск по SB_URL).');return null;}
+  if(!window.supabase){mpStatus('Не загрузилась библиотека Supabase — нужен интернет.');return null;}
+  sb=window.supabase.createClient(SB_URL,SB_KEY,{realtime:{params:{eventsPerSecond:30}}});
+  return sb;
+}
+function sbSend(ev,p){try{if(sbCh)sbCh.send({type:'broadcast',event:ev,payload:p});}catch(e){}}
+function sbLeave(){
+  clearTimeout(sbTimer);clearInterval(sbKA);clearInterval(sbHello);
+  try{if(sbCh&&sb)sb.removeChannel(sbCh);}catch(e){}
+  sbCh=null;net.relay=false;
+}
+function sbOpen(code,onReady){
+  var c=sbClient();if(!c)return false;
+  sbLeave();
+  sbCh=c.channel('ks-'+code,{config:{broadcast:{self:false}}});
+  sbCh.on('broadcast',{event:'sig'},function(m){onSig(m.payload);})
+    .on('broadcast',{event:'g'},function(m){sbLastRx=performance.now();if(net.relay)onNet(m.payload);})
+    .on('broadcast',{event:'k'},function(){sbLastRx=performance.now();})
+    .subscribe(function(st){
+      if(st==='SUBSCRIBED')onReady();
+      else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT')mpStatus('Нет связи с Supabase. Проверь интернет, URL и ключ.');
+    });
+  return true;
+}
+function onSig(m){
+  if(!m||net.on)return;
+  if(m.k==='hello'&&sbHost){if(sbBusy)return;sbBusy=true;hostOffer();}
+  else if(m.k==='offer'&&!sbHost){if(net.pc)return;guestAnswer(m.d);}
+  else if(m.k==='answer'&&sbHost&&net.pc){net.pc.setRemoteDescription(m.d).catch(mpErr);}
+  else if(m.k==='relay'&&!sbHost){startRelay();}
+}
+function hostOffer(){
+  mpStatus('Игрок найден, соединяем…');
+  try{
+    var pc=mkPc();wireDc(pc.createDataChannel('ks'));
+    pc.createOffer().then(function(o){return pc.setLocalDescription(o);}).then(function(){return gatherDone(pc);})
+      .then(function(){var d=pc.localDescription;sbSend('sig',{k:'offer',d:{type:d.type,sdp:d.sdp}});}).catch(mpErr);
+    sbTimer=setTimeout(function(){if(!net.on){sbSend('sig',{k:'relay'});startRelay();}},12000);
+  }catch(e){mpErr(e);}
+}
+function guestAnswer(d){
+  clearInterval(sbHello);mpStatus('Соединяемся…');
+  try{
+    var pc=mkPc();pc.ondatachannel=function(e){wireDc(e.channel);};
+    pc.setRemoteDescription(d).then(function(){return pc.createAnswer();}).then(function(a){return pc.setLocalDescription(a);}).then(function(){return gatherDone(pc);})
+      .then(function(){var l=pc.localDescription;sbSend('sig',{k:'answer',d:{type:l.type,sdp:l.sdp}});}).catch(mpErr);
+  }catch(e){mpErr(e);}
+}
+function startRelay(){
+  if(net.on)return;
+  clearTimeout(sbTimer);mpClose();
+  net.relay=true;sbLastRx=performance.now();
+  onNetOpen();
+  sbKA=setInterval(function(){sbSend('k',1);if(performance.now()-sbLastRx>10000)onNetClose();},2000);
+}
 function mkPc(){
   mpClose();
   var pc=new RTCPeerConnection(STUNS);net.pc=pc;
   pc.oniceconnectionstatechange=function(){
     var st=pc.iceConnectionState;
     if(st==='checking')mpStatus('Проверяем связь…');
-    else if(st==='failed')mpStatus('Не соединилось. Оба впишите свой IP из VPN в поле выше, создайте коды ЗАНОВО и обменяйтесь снова. '+(pc.localDescription?candInfo(pc.localDescription.sdp):''));
+    else if(st==='failed'&&!net.on){mpStatus('Прямая связь не вышла, идём через сервер…');if(sbHost){sbSend('sig',{k:'relay'});startRelay();}}
     else if(st==='disconnected')mpStatus('Связь пропала…');
   };
   return pc;
 }
 function wireDc(dc){
   net.dc=dc;
-  dc.onopen=onNetOpen;
+  dc.onopen=function(){if(net.on)return;onNetOpen();sbLeave();};
   dc.onmessage=function(e){try{onNet(JSON.parse(e.data));}catch(err){}};
   dc.onclose=onNetClose;
 }
-var mpIp=$('mpip');
-function fixSdp(sdp,ip){
-  var out=[];
-  sdp.split(/\r?\n/).forEach(function(l){
-    out.push(l);
-    if(l.indexOf('a=candidate:')===0&&/ typ host/.test(l)&&/ udp /i.test(l)){
-      var p=l.split(' ');
-      if(p.length>8&&p[4]!==ip){p[0]='a=candidate:9'+p[0].slice(12);p[3]=String(Math.max(1,(+p[3])-1));p[4]=ip;out.push(p.join(' '));}
-    }
-  });
-  return out.join('\r\n');
-}
-function candInfo(sdp){
-  var h=0,loc=0,sr=0,rl=0;
-  sdp.split(/\r?\n/).forEach(function(l){
-    if(l.indexOf('a=candidate:')!==0)return;
-    if(/ typ host/.test(l)){h++;if(/\.local /.test(l))loc++;}else if(/ typ srflx/.test(l))sr++;else if(/ typ relay/.test(l))rl++;
-  });
-  return 'Кандидаты: host '+h+(loc?' (из них скрыто .local: '+loc+')':'')+', внешний '+sr+(rl?', relay '+rl:'');
-}
-function showCode(msg){
-  var pc=net.pc;if(!pc||!pc.localDescription)return;
-  var d=pc.localDescription,sdp=d.sdp,ip=mpIp.value.trim();
-  if(ip)sdp=fixSdp(sdp,ip);
-  mpOut.value=btoa(JSON.stringify({type:d.type,sdp:sdp}));
-  mpStatus((msg||'')+' '+candInfo(sdp));
-}
-mpIp.addEventListener('input',function(){showCode('Код обновлён с твоим IP.');});
-$('mpmic').addEventListener('click',function(){
-  try{
-    navigator.mediaDevices.getUserMedia({audio:true}).then(function(st){st.getTracks().forEach(function(t){t.stop();});mpStatus('Готово: теперь создавай комнату / входи по коду — реальные IP откроются.');}).catch(function(e){mpStatus('Микрофон не разрешён ('+e.name+'). Используй ввод IP из VPN ниже.');});
-  }catch(e){mpStatus('Браузер не даёт доступ (нужен https). Используй ввод IP из VPN.');}
-});
 function mpErr(e){mpStatus('Ошибка: '+(e&&e.message?e.message:e));}
-function mpShow(host){
-  mpMode=host?'host':'join';$('mpa').style.display='flex';mpOut.value='';mpIn.value='';
-  if(host){
-    $('mpl1').textContent='Шаг 1. Отправь этот код другу:';
-    $('mpl2').textContent='Шаг 2. Вставь сюда ответный код друга:';
-    $('mpgo').textContent='Подключить';
-  }else{
-    $('mpl1').textContent='Шаг 2. Отправь этот ответный код хосту (появится после шага 1):';
-    $('mpl2').textContent='Шаг 1. Вставь сюда код хоста:';
-    $('mpgo').textContent='Создать ответ';
-  }
-}
+function mpRoomCode(){var a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',s='';for(var i=0;i<5;i++)s+=a[Math.floor(Math.random()*a.length)];return s;}
 $('mpb').addEventListener('click',function(){
   if(started)return;
   if(!window.RTCPeerConnection){alert('Этот браузер не поддерживает мультиплеер (WebRTC).');return;}
   $('mp').classList.add('on');
 });
-$('mpx').addEventListener('click',function(){mpClose();$('mpa').style.display='none';mpStatus('');$('mp').classList.remove('on');});
+$('mpx').addEventListener('click',function(){
+  sbLeave();mpClose();sbBusy=false;
+  $('mpa').style.display='none';$('mpbig').style.display='none';$('mpjoin').style.display='none';
+  mpStatus('');$('mp').classList.remove('on');
+});
 $('mph').addEventListener('click',function(){
-  mpShow(true);mpStatus('Создаём код…');
-  try{
-    var pc=mkPc();wireDc(pc.createDataChannel('ks'));
-    pc.createOffer().then(function(o){return pc.setLocalDescription(o);}).then(function(){return gatherDone(pc);})
-      .then(function(){showCode('Код готов. Отправь его другу, потом вставь его ответ ниже.');}).catch(mpErr);
-  }catch(e){mpErr(e);}
+  sbHost=true;sbBusy=false;mpMode='host';mpClose();
+  $('mpa').style.display='flex';$('mpjoin').style.display='none';$('mpbig').style.display='block';
+  var code=mpRoomCode();$('mpbig').textContent=code;mpStatus('Создаём комнату…');
+  if(!sbOpen(code,function(){mpStatus('Комната готова. Скажи код другу и жди — игра запустится сама.');}))$('mpbig').textContent='';
 });
 $('mpj').addEventListener('click',function(){
-  mpShow(false);mpStatus('Вставь код хоста и нажми «Создать ответ».');
-  try{var pc=mkPc();pc.ondatachannel=function(e){wireDc(e.channel);};}catch(e){mpErr(e);}
-});
-$('mpcp').addEventListener('click',function(){
-  mpOut.focus();mpOut.select();
-  try{if(navigator.clipboard)navigator.clipboard.writeText(mpOut.value).catch(function(){document.execCommand('copy');});else document.execCommand('copy');}catch(e){try{document.execCommand('copy');}catch(e2){}}
-  mpStatus('Скопировано (если не вышло — выдели код и скопируй вручную).');
+  sbHost=false;mpMode='join';mpClose();
+  $('mpa').style.display='flex';$('mpbig').style.display='none';$('mpjoin').style.display='flex';
+  mpStatus('Введи код комнаты и нажми «Войти».');
 });
 $('mpgo').addEventListener('click',function(){
-  var pc=net.pc;if(!pc||!mpIn.value.trim())return;
-  var d;try{d=dec(mpIn.value);}catch(e){mpStatus('Неверный код — скопируй его целиком.');return;}
-  if(mpMode==='host'){
-    pc.setRemoteDescription(d).then(function(){mpStatus('Соединяемся…');}).catch(mpErr);
-  }else{
-    mpStatus('Создаём ответ…');
-    pc.setRemoteDescription(d).then(function(){return pc.createAnswer();}).then(function(a){return pc.setLocalDescription(a);}).then(function(){return gatherDone(pc);})
-      .then(function(){showCode('Отправь этот ответ хосту — игра запустится сама.');}).catch(mpErr);
-  }
+  var code=$('mpcode').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(code.length<5){mpStatus('Код — 5 символов.');return;}
+  mpStatus('Подключаемся…');
+  sbOpen(code,function(){
+    var n=0;
+    function hi(){
+      if(net.on||net.pc)return;
+      if(++n>8){clearInterval(sbHello);mpStatus('Комната не отвечает. Проверь код: хост уже должен создать комнату.');return;}
+      sbSend('sig',{k:'hello'});
+    }
+    clearInterval(sbHello);hi();sbHello=setInterval(hi,2000);
+  });
 });
 
 function newRP(){return {remote:true,x:0,z:0,tx:0,tz:0,rot:0,rr:0,hp:100,dead:false,dt:0,bleed:null,stun:0,slow:0,n:'Игрок',o:CH.batya.o,ch:'batya',w:'L',sw:0,b:0,fl:null,wv:0,inv:0,cl:[],pj:[],bj:[],ir:0,up:0,bt:0,th:0,snap:true};}
@@ -1720,7 +1734,7 @@ function onNetOpen(){
 }
 function onNetClose(){
   if(!net.on)return;
-  net.on=false;RP=null;myReady=false;remoteReady=false;
+  net.on=false;sbLeave();sbBusy=false;mpClose();RP=null;myReady=false;remoteReady=false;
   BOTS=BOTS.filter(function(b){return !b.remote;});
   mpMsg('Соединение с игроком потеряно',5);
   if(match)match.over=true;
